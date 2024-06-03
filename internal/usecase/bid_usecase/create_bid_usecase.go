@@ -110,7 +110,10 @@ func (bu *BidUseCase) CreateBid(
 		return err
 	}
 
-	bu.bidChannel <- *bidEntity
+	err = bu.BidRepository.CreateBid(ctx, []bid_entity.Bid{*bidEntity})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

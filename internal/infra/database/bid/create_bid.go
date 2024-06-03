@@ -48,6 +48,8 @@ func (bd *BidRepository) CreateBid(
 	ctx context.Context,
 	bidEntities []bid_entity.Bid) *internal_error.InternalError {
 	var wg sync.WaitGroup
+	var overallErr *internal_error.InternalError
+
 	for _, bid := range bidEntities {
 		wg.Add(1)
 		go func(bidValue bid_entity.Bid) {
@@ -72,11 +74,13 @@ func (bd *BidRepository) CreateBid(
 			if okEndTime && okStatus {
 				now := time.Now()
 				if auctionStatus == auction_entity.Completed || now.After(auctionEndTime) {
+					overallErr = internal_error.NewBadRequestError("Leilão encerrado, não aceita mais lances")
 					return
 				}
 
 				if _, err := bd.Collection.InsertOne(ctx, bidEntityMongo); err != nil {
 					logger.Error("Error trying to insert bid", err)
+					overallErr = internal_error.NewInternalServerError("Error trying to insert bid")
 					return
 				}
 
@@ -86,9 +90,11 @@ func (bd *BidRepository) CreateBid(
 			auctionEntity, err := bd.AuctionRepository.FindAuctionById(ctx, bidValue.AuctionId)
 			if err != nil {
 				logger.Error("Error trying to find auction by id", err)
+				overallErr = internal_error.NewInternalServerError("Error trying to find auction by id")
 				return
 			}
 			if auctionEntity.Status == auction_entity.Completed {
+				overallErr = internal_error.NewBadRequestError("Leilão encerrado, não aceita mais lances")
 				return
 			}
 
@@ -102,12 +108,13 @@ func (bd *BidRepository) CreateBid(
 
 			if _, err := bd.Collection.InsertOne(ctx, bidEntityMongo); err != nil {
 				logger.Error("Error trying to insert bid", err)
+				overallErr = internal_error.NewInternalServerError("Error trying to insert bid")
 				return
 			}
 		}(bid)
 	}
 	wg.Wait()
-	return nil
+	return overallErr
 }
 
 func getAuctionInterval() time.Duration {

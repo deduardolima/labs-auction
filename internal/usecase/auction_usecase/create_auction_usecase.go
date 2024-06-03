@@ -56,6 +56,8 @@ type AuctionUseCaseInterface interface {
 	FindWinningBidByAuctionId(
 		ctx context.Context,
 		auctionId string) (*WinningInfoOutputDTO, *internal_error.InternalError)
+
+	StartAutoCloseRoutine()
 }
 
 type ProductCondition int64
@@ -84,4 +86,8 @@ func (au *AuctionUseCase) CreateAuction(
 	}
 
 	return nil
+}
+
+func (au *AuctionUseCase) StartAutoCloseRoutine() {
+	go au.auctionRepositoryInterface.CloseExpiredAuctions()
 }
