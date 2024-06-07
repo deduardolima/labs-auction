@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,20 @@ func TestCreateAuction(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	mt.Run("successful auction creation", func(mt *mtest.T) {
-		mt.AddMockResponses(mtest.CreateSuccessResponse())
+		mt.AddMockResponses(
+			mtest.CreateSuccessResponse(),
+			mtest.CreateSuccessResponse(),
+			mtest.CreateCursorResponse(1, "auctions.auctions", mtest.FirstBatch, bson.D{
+				{Key: "_id", Value: "auction-id-1"},
+				{Key: "product_name", Value: "Product 1"},
+				{Key: "category", Value: "Category 1"},
+				{Key: "description", Value: "Description 1"},
+				{Key: "condition", Value: auction_entity.New},
+				{Key: "status", Value: auction_entity.Completed},
+				{Key: "timestamp", Value: time.Now().Unix()},
+				{Key: "end_time", Value: time.Now().Unix() + 1},
+			}),
+		)
 
 		repo := auction.NewAuctionRepository(mt.DB)
 		ctx := context.Background()
@@ -33,10 +47,18 @@ func TestCreateAuction(t *testing.T) {
 			Timestamp:   time.Now(),
 		}
 
-		os.Setenv("AUCTION_DURATION", "60")
+		os.Setenv("AUCTION_DURATION", "2")
 
 		err := repo.CreateAuction(ctx, auctionEntity)
 		assert.Nil(t, err)
+
+		time.Sleep(3 * time.Second)
+
+		var updatedAuction auction.AuctionEntityMongo
+		findErr := mt.DB.Collection("auctions").FindOne(ctx, bson.M{"_id": auctionEntity.Id}).Decode(&updatedAuction)
+		assert.Nil(t, findErr)
+		//Verificando se status alterado para Completed
+		assert.Equal(t, auction_entity.Completed, updatedAuction.Status)
 	})
 
 	mt.Run("invalid auction duration", func(mt *mtest.T) {

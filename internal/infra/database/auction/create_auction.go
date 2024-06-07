@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -44,7 +45,9 @@ func (ar *AuctionRepository) CreateAuction(
 		logger.Error("Invalid auction duration", err)
 		return internal_error.NewInternalServerError("Invalid auction duration")
 	}
-	endTime := auctionEntity.Timestamp.Add(time.Duration(duration) * time.Minute).Unix()
+	endTime := auctionEntity.Timestamp.Add(time.Duration(duration) * time.Second).Unix()
+
+	auctionEntity.Id = uuid.New().String()
 
 	auctionEntityMongo := &AuctionEntityMongo{
 		Id:          auctionEntity.Id,
@@ -62,7 +65,21 @@ func (ar *AuctionRepository) CreateAuction(
 		return internal_error.NewInternalServerError("Error trying to insert auction")
 	}
 
+	go ar.checkAndCloseAuction(ctx, auctionEntityMongo)
+
 	return nil
+}
+
+func (ar *AuctionRepository) checkAndCloseAuction(ctx context.Context, auctionEntityMongo *AuctionEntityMongo) {
+	time.Sleep(time.Duration(auctionEntityMongo.EndTime-time.Now().Unix()) * time.Second)
+
+	filter := bson.M{"_id": auctionEntityMongo.Id}
+	update := bson.M{"$set": bson.M{"status": auction_entity.Completed}}
+
+	_, err := ar.Collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		logger.Error("Error updating auction status to completed", err)
+	}
 }
 
 func (ar *AuctionRepository) CloseExpiredAuctions() {
